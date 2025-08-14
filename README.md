@@ -1,10 +1,10 @@
-# 🧠 FSL on Windows (WSL2 + Ubuntu) — Install Guide
+# FSL on Windows (WSL2 + Ubuntu) — Install Guide
 
 This guide shows how to install **FSL 6.0.7.18** on Windows using **WSL2** and **Ubuntu 22.04 LTS**, with a fully working `topup` command for distortion correction.
 
 ---
 
-## 1️⃣ Install Ubuntu (WSL2) on Windows
+## 1Install Ubuntu (WSL2) on Windows
 
 ### 1. Enable WSL2 & Virtual Machine Platform
 1. **Open PowerShell as Administrator**
@@ -66,7 +66,7 @@ ls
 
 ---
 
-## 2️⃣ Install FSL via micromamba (conda-forge)
+## Install FSL via micromamba (conda-forge)
 
 > This avoids the old `fslinstaller.py` issues and gives you the latest maintained conda build of FSL.
 
@@ -137,7 +137,7 @@ topup -h | head -n 5
 
 ---
 
-## 3️⃣ Running TOPUP on Your Data (Example)
+## Running TOPUP on Your Data (Example)
 
 ```bash
 # Move to your data folder
@@ -161,7 +161,7 @@ applytopup --imain=sub-001_ses-amph_task-doors1_bold.nii.gz            --inindex
 
 ---
 
-## 🛠 Troubleshooting WSL/FSL Install Issues
+## Troubleshooting WSL/FSL Install Issues
 
 ### **1. `$FSLDIR` points to the wrong location**
 **Symptom:**
@@ -230,7 +230,7 @@ topup -h | head -n 5
 
 ---
 
-💡 **Pro tip:** If something still doesn’t work, check the installer log:
+ **Pro tip:** If something still doesn’t work, check the installer log:
 ```bash
 tail -n 60 ~/fsl_installation_*.log 2>/dev/null
 ```
