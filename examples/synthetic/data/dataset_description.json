@@ -1,0 +1,6 @@
+{
+  "Name": "Synthetic zero-distortion installation example",
+  "BIDSVersion": "1.9.0",
+  "DatasetType": "raw",
+  "Description": "Generated Gaussian phantom; no participant data. Minimal inputs for this pipeline, not a full BIDS validation fixture."
+}

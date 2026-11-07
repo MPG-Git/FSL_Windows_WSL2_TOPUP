@@ -70,3 +70,10 @@ identical opposing-encoding images, and verifies failure propagation and CLI
 validation. The test requires NumPy and NiBabel (available in the FSL Python
 environment). It does not validate distortion correction on real participant
 data; review field maps, acquisition metadata and before/after images.
+
+## Downloadable synthetic example
+
+[Run the bundled synthetic example](examples/synthetic/README.md) to check your setup against
+included reference outputs. It contains actual input files, a one-command runner,
+expected tables/plots, and numerical comparisons that report PASS or a mismatch.
+The example guide links to the ZIP of this review branch, including the readiness fixes.

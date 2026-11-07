@@ -7,7 +7,7 @@ import nibabel as nib
 import numpy as np
 
 import tempfile
-root = Path(tempfile.mkdtemp(prefix='topup-smoke-'))
+root = Path(tempfile.mkdtemp(prefix='topup smoke '))
 repo = Path(__file__).resolve().parents[1]
 script = repo/'Distortion_correction_with_blip_up_blip_down.bash'
 fmap = root/'sub-01/fmap'; func=root/'sub-01/func'

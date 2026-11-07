@@ -1,0 +1,21 @@
+{
+  "data/dataset_description.json": "480ac7b5d0fe1fa6ef1312718bb7df1f48a26c8d5367dc81d7678e282373f3f6",
+  "data/sub-01/fmap/sub-01_dir-ap_task-one_epi.json": "ccff1b1381e66118f18a4adc06fda7fdf39e0a5ddbf6b54c722cec07449ce62b",
+  "data/sub-01/fmap/sub-01_dir-ap_task-one_epi.nii.gz": "40b9352c08eab0d14a24c515be725eae8c409fc1580c32dfd7440cbc0124670c",
+  "data/sub-01/fmap/sub-01_dir-ap_task-two_epi.json": "ccff1b1381e66118f18a4adc06fda7fdf39e0a5ddbf6b54c722cec07449ce62b",
+  "data/sub-01/fmap/sub-01_dir-ap_task-two_epi.nii.gz": "90d3aabc8b6859fc880f66f7aa066e7ee5ed0b699f47064e3012fbd0186d4de2",
+  "data/sub-01/fmap/sub-01_dir-pa_task-one_epi.json": "1a72ee2d51dbc42cb5f20eb901d9cd2ce607b869dd5754cb15bf177bfbb773e4",
+  "data/sub-01/fmap/sub-01_dir-pa_task-one_epi.nii.gz": "40b9352c08eab0d14a24c515be725eae8c409fc1580c32dfd7440cbc0124670c",
+  "data/sub-01/fmap/sub-01_dir-pa_task-two_epi.json": "1a72ee2d51dbc42cb5f20eb901d9cd2ce607b869dd5754cb15bf177bfbb773e4",
+  "data/sub-01/fmap/sub-01_dir-pa_task-two_epi.nii.gz": "90d3aabc8b6859fc880f66f7aa066e7ee5ed0b699f47064e3012fbd0186d4de2",
+  "data/sub-01/func/sub-01_task-one_bold.json": "ccff1b1381e66118f18a4adc06fda7fdf39e0a5ddbf6b54c722cec07449ce62b",
+  "data/sub-01/func/sub-01_task-one_bold.nii.gz": "69de71baa075bb38a0369f35e1c87a03e322f95630dde5067bb29da7310f4cc7",
+  "data/sub-01/func/sub-01_task-two_bold.json": "ccff1b1381e66118f18a4adc06fda7fdf39e0a5ddbf6b54c722cec07449ce62b",
+  "data/sub-01/func/sub-01_task-two_bold.nii.gz": "6abd4a9d41cdcd713c3f2cf3964e45f5582b84268b485911777533c879dde0d1",
+  "expected/fsl_version.txt": "2d41f0ec95216bc56c5aa2d35b84d8f0f9055b2af527d99c5e65d3483c2c846a",
+  "expected/metrics.json": "973dd70f776db3ca276fa3884ddf52e3fe555ca640410b1c384abec454ffa952",
+  "expected/one_corrected.nii.gz": "9180d11f52b72f0caf22cc353ea14eb7116699faeac19a914356f28a62184bee",
+  "expected/one_preview.png": "894128316e82d2925b09e10831f4d34a5c6082399b4c5f576c409a450611f867",
+  "expected/two_corrected.nii.gz": "3418af06ab5644ef87641b308a55d6133c4326fe4accd177648858a7b7b6bc5b",
+  "expected/two_preview.png": "f4cebb25ef65ba284de49fc1d7ac3933980c0414cf4eacb0fabd159569aa234d"
+}

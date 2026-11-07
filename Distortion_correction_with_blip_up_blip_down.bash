@@ -168,7 +168,10 @@ prep_one_blip() {
     echo "  $in has $nv vols → mean → $out"
     fslmaths "$in" -Tmean "$out"
   else
-    fslchfiletype NIFTI_GZ "$in" "$out"
+    # fslchfiletype invokes an unquoted imcp in some FSL releases, which
+    # splits paths containing spaces. fslroi accepts the quoted path and
+    # extracts the sole volume without changing its values.
+    FSLOUTPUTTYPE=NIFTI_GZ fslroi "$in" "$out" 0 1
   fi
 }
 
@@ -180,7 +183,7 @@ have_cmd fslversion && fslversion || echo "fslversion not found"
 echo "FSLDIR=${FSLDIR:-"(unset)"}"
 echo "PATH=$PATH"
 uname -a
-for c in python3 topup applytopup fslmaths fslmerge fslroi fslstats fslhd fslval fslchfiletype; do
+for c in python3 topup applytopup fslmaths fslmerge fslroi fslstats fslhd fslval; do
   have_cmd "$c" || { echo "ERROR: $c not found in PATH; initialize FSL first"; exit 2; }
 done
 echo "ROOT=$ROOT"
