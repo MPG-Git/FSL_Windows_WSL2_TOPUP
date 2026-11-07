@@ -4,7 +4,7 @@
 # Outputs per BOLD:
 #   <boldstem>_blipUp_blipDown.nii.gz   (corrected BOLD)
 #   <boldstem>_blipAnB.txt              (metrics summary)
-# Intermediates/QA in $ROOT/topup_work_<sub>_<ses>/
+# Intermediates/QA in a unique $ROOT/topup_work_<sub>_<ses>_<task>_*/ folder.
 #
 # USAGE:
 #   bash run_topup_batch.sh \
@@ -24,14 +24,15 @@
 # NOTES:
 # - Prefers BIDS fmap files like: sub-XX/ses-YY/fmap/*dir-ap*_epi.nii[.gz] and *dir-pa*.
 # - If missing, scans fmap/ for filenames containing AP/PA keyword sets (case-insensitive).
-# - Reads TotalReadoutTime from the AP JSON when available; defaults to 0.050s otherwise.
-# - Determines applytopup inindex using PEDIR override > BOLD JSON > defaults to j- (index=1).
+# - Requires direction and readout metadata for both field maps and BOLD.
+# - Supports opposite j-axis field maps; other acquisition axes are rejected.
 # - Works with sessionless BIDS (no ses-*).
 #
 set -o pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---------- Defaults (overridable by CLI or env) ----------
-ROOT="${ROOT:-/mnt/f/UIC_DDP_Data/BIDS_DDP}"
+ROOT="${ROOT:-}"
 BOLD_RUNS="${BOLD_RUNS:-doors1 doors2 rs}"
 PEDIR_OVERRIDE="${PEDIR_OVERRIDE:-}"     # j- or j to force applytopup inindex
 N_WORKERS="${N_WORKERS:-1}"
@@ -69,6 +70,10 @@ AP_KEYS=($AP_KEYS_DEFAULT)
 PA_KEYS=($PA_KEYS_DEFAULT)
 while (( "$#" )); do
   case "$1" in
+    --root|--runs|--workers|--topup-nthr|--pedir-override|--ap-keys|--pa-keys)
+      [[ $# -ge 2 && "$2" != --* && -n "$2" ]] || { echo "Missing value for $1" >&2; exit 2; };;
+  esac
+  case "$1" in
     --root) ROOT="$2"; shift 2;;
     --runs) BOLD_RUNS="$2"; shift 2;;
     --workers) N_WORKERS="$2"; shift 2;;
@@ -81,6 +86,9 @@ while (( "$#" )); do
     *) echo "Unknown arg: $1"; print_help; exit 1;;
   esac
 done
+[[ "$N_WORKERS" =~ ^[1-9][0-9]*$ && "$TOPUP_NTHR" =~ ^[1-9][0-9]*$ ]] || { echo 'Worker/thread counts must be positive integers'; exit 2; }
+[[ -d "$ROOT" ]] || { echo 'Supply --root pointing to a BIDS directory'; exit 2; }
+ROOT="$(cd -- "$ROOT" && pwd)"
 
 timestamp() { date +"%Y%m%d_%H%M%S"; }
 LOG="$HOME/topup_batch_$(timestamp).log"
@@ -113,6 +121,8 @@ bold_for_task() {
 fmap_for_task_dir() {
   local root="$1" sub="$2" ses="$3" dir="$4" t="$5"
   first_existing \
+    "$(build_path "$root" "$sub" "$ses" fmap "${sub}${ses:+_${ses}}_task-${t}_dir-${dir}_epi.nii.gz")" \
+    "$(build_path "$root" "$sub" "$ses" fmap "${sub}${ses:+_${ses}}_task-${t}_dir-${dir}_epi.nii")" \
     "$(build_path "$root" "$sub" "$ses" fmap "${sub}${ses:+_${ses}}_dir-${dir}_task-${t}_epi.nii")" \
     "$(build_path "$root" "$sub" "$ses" fmap "${sub}${ses:+_${ses}}_dir-${dir}_task-${t}_epi.nii.gz")"
 }
@@ -121,7 +131,7 @@ fmap_for_task_dir() {
 scan_fmap_by_keywords() {
   local fmap_dir="$1"; shift
   local -a keys=("$@")
-  shopt -s nullglob nocaseglob
+  shopt -s nullglob nocasematch
   local hits=()
   for ext in nii nii.gz; do
     for f in "$fmap_dir"/*."$ext"; do
@@ -133,10 +143,9 @@ scan_fmap_by_keywords() {
       done
     done
   done
-  shopt -u nullglob nocaseglob
-  # choose the shortest name if multiple (heuristic)
-  if ((${#hits[@]})); then
-    printf "%s\n" "${hits[@]}" | awk '{print length, $0}' | sort -n | cut -d' ' -f2- | head -n1
+  shopt -u nullglob nocasematch
+  if ((${#hits[@]} == 1)); then
+    printf '%s\n' "${hits[0]}"
   else
     return 1
   fi
@@ -164,15 +173,15 @@ prep_one_blip() {
 }
 
 # We assume j-axis PE; use blipA_1vol to read pixdim2 as SPE (common AP/PA layout)
-pe_size_mm() { fslval blipA_1vol.nii.gz pixdim2; }
+pe_size_mm() { fslval blipA_1vol.nii.gz pixdim2 | awk '{print $1}'; }
 
 echo "== FSL check =="
 have_cmd fslversion && fslversion || echo "fslversion not found"
 echo "FSLDIR=${FSLDIR:-"(unset)"}"
 echo "PATH=$PATH"
 uname -a
-for c in topup applytopup fslmaths fslmerge fslroi fslstats fslhd fslnvols slicer; do
-  have_cmd "$c" || echo "WARNING: $c not found in PATH"
+for c in python3 topup applytopup fslmaths fslmerge fslroi fslstats fslhd fslval fslchfiletype; do
+  have_cmd "$c" || { echo "ERROR: $c not found in PATH; initialize FSL first"; exit 2; }
 done
 echo "ROOT=$ROOT"
 echo "RUNS=$BOLD_RUNS"
@@ -182,7 +191,7 @@ echo
 
 [[ -d "$ROOT" ]] || { echo "ERROR: ROOT not found: $ROOT"; exit 1; }
 
-STATUS_TSV="$ROOT/topup_batch_status_$(timestamp).tsv"
+STATUS_TSV="$ROOT/topup_batch_status_$(timestamp)_$$.tsv"
 echo -e "STATUS\tsub\tses\trun\tbold\tout" > "$STATUS_TSV"
 
 # -------- core runner for one (sub,ses,run) --------
@@ -210,17 +219,21 @@ process_one() {
     pa="$(scan_fmap_by_keywords "$fmap_dir" "${PA_KEYS[@]}")" || true
   fi
 
-  local work="$ROOT/topup_work_${sub}_${ses:-nos}"
-  mkdir -p "$work"; cd "$work" || {
-    echo "ERR cd work"; echo -e "FAIL\t$sub\t${ses:-}\t$run\t$bold\t(workdir)" >> "$STATUS_TSV"; return 1; }
+  local work
+  [[ "$run" =~ ^[a-zA-Z0-9_-]+$ ]] || { echo 'Invalid task name'; return 1; }
 
   if (( DRY_RUN )); then
     echo "[DRY] $sub ${ses:-(nos)} $run"
     echo "      BOLD: $bold"
     echo "      AP?: ${ap:-<none>}"
     echo "      PA?: ${pa:-<none>}"
-    return 0
+    [[ -n "$ap" && -n "$pa" ]] || return 1
+    python3 "$SCRIPT_DIR/topup_metadata.py" "$ap" "$pa" "$bold" "$PEDIR_OVERRIDE"
+    return $?
   fi
+
+  work="$(mktemp -d "$ROOT/topup_work_${sub}_${ses:-nos}_${run}_XXXXXX")"
+  cd "$work" || return 1
 
   if [[ -z "$ap" || -z "$pa" ]]; then
     local bold_stem; bold_stem="$(stem_of "$bold")"
@@ -242,7 +255,7 @@ process_one() {
     } > "$miss_txt"
     echo "SKIP [$sub ${ses:-(nos)} $run] missing AP/PA fmap → $miss_txt"
     echo -e "SKIP\t$sub\t${ses:-}\t$run\t$bold\t$miss_txt" >> "$STATUS_TSV"
-    return 0
+    return 1
   fi
 
   echo "---- $sub ${ses:-(nos)} $run ----"
@@ -256,13 +269,9 @@ process_one() {
   final_base="${bold_stem}_blipUp_blipDown"
   final_bold="$work/${final_base}.nii.gz"
 
-  # TRT from AP json (fallback 0.050 s)
-  local trt ap_json
-  trt=""; ap_json="$(json_of "$ap")"
-  if [[ -f "$ap_json" ]]; then
-    trt="$(grep -Po '"TotalReadoutTime"\s*:\s*\K[0-9.]+(?=[,}])' "$ap_json" || true)"
-  fi
-  [[ -z "$trt" ]] && { echo "  WARNING: TRT not in JSON; defaulting to 0.050 s"; trt="0.050"; }
+  local trt trt_pa pe_ap pe_pa inindex metadata
+  metadata="$(python3 "$SCRIPT_DIR/topup_metadata.py" "$ap" "$pa" "$bold" "$PEDIR_OVERRIDE")" || return 1
+  read -r trt trt_pa pe_ap pe_pa inindex <<< "$metadata"
   echo "  TRT=${trt}s"
 
   echo "  -- headers --"
@@ -282,7 +291,7 @@ process_one() {
   have_cmd slicer && slicer before_diff.nii.gz -u -s 2 -z 0.5 before_diff_z.png
 
   # acqp (AP = j-, PA = j)
-  printf "%s %s\n%s %s\n" "0 -1 0" "$trt" "0  1 0" "$trt" > acqp.txt
+  printf "0 %s 0 %s\n0 %s 0 %s\n" "$pe_ap" "$trt" "$pe_pa" "$trt_pa" > acqp.txt
   sed -i 's/\r$//' acqp.txt
 
   # blips 4D
@@ -325,16 +334,6 @@ process_one() {
   VSM_MM_STATS="$( fslstats vsm_mm_abs.nii.gz  -M -P 50 -P 95 -P 99 -R)"
 
   # choose inindex for BOLD
-  local inindex=1 bold_json ped
-  bold_json="$(json_of "$bold")"
-  if [[ -n "$PEDIR_OVERRIDE" ]]; then
-    case "$PEDIR_OVERRIDE" in j-) inindex=1;; j) inindex=2;; esac
-  elif [[ -f "$bold_json" ]]; then
-    ped="$(grep -Po '"PhaseEncodingDirection"\s*:\s*"\K[^"]+' "$bold_json" || true)"
-    case "${ped:-}" in j-) inindex=1;; j) inindex=2;; *) inindex=1;; esac
-  else
-    inindex=1
-  fi
   echo "  Using inindex=$inindex"
 
   # applytopup to BOLD
@@ -417,23 +416,26 @@ echo "Total tasks: ${#TASKS[@]} (N_WORKERS=$N_WORKERS)  DRY_RUN=$DRY_RUN"
 echo
 
 # ---------- run with a simple worker pool ----------
-running=0
+pids=()
+failed=0
 for task in "${TASKS[@]}"; do
   IFS='|' read -r sub ses run <<<"$task"
   (
+    set -Ee
+    trap 'printf "FAIL\t%s\t%s\t%s\t(command error)\t(see log)\n" "$sub" "$ses" "$run" >> "$STATUS_TSV"' ERR
     # Normalize empty session token
     [[ "$ses" == "" ]] && ses=""
     process_one "$sub" "$ses" "$run"
   ) &
 
-  ((running++))
-  if (( running >= N_WORKERS )); then
-    wait -n
-    ((running--))
+  pids+=("$!")
+  if (( ${#pids[@]} >= N_WORKERS )); then
+    wait "${pids[0]}" || failed=1
+    pids=("${pids[@]:1}")
   fi
 done
 
-wait
+for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
 
 echo
 echo "== BATCH SUMMARY (from $STATUS_TSV) =="
@@ -445,3 +447,4 @@ echo "  SKIP : ${sk:-0}"
 echo "  FAIL : ${fl:-0}"
 echo "Status TSV: $STATUS_TSV"
 echo "Master log: $LOG"
+exit "$failed"
