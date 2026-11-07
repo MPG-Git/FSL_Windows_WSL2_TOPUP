@@ -1,236 +1,79 @@
-# FSL on Windows (WSL2 + Ubuntu) — Install Guide
+# FSL TOPUP on Windows through WSL2
 
-This guide shows how to install **FSL 6.0.7.18** on Windows using **WSL2** and **Ubuntu 22.04 LTS**, with a fully working `topup` command for distortion correction.
+This is a Bash/Python workflow for FSL, not an EEGLAB plugin. It needs WSL2
+with a Linux distribution, Bash, Python 3, and a working FSL installation.
+Use the [official FSL Windows instructions](https://fsl.fmrib.ox.ac.uk/fsl/docs/install/windows.html).
+Install FSL inside the Linux filesystem and initialize its environment in
+the WSL terminal. The workflow does not install or modify FSL.
 
----
+## Check setup
 
-## 1Install Ubuntu (WSL2) on Windows
-
-### 1. Enable WSL2 & Virtual Machine Platform
-1. **Open PowerShell as Administrator**
-   - Press `Start`, type `PowerShell`
-   - Right-click → **Run as Administrator**
-2. **Enable WSL**:
-```powershell
-wsl --install
-```
-3. If you already have WSL and want to ensure version 2:
-```powershell
-wsl --set-default-version 2
-```
-4. **Restart your computer** when prompted.
-
----
-
-### 2. Install Ubuntu from Microsoft Store
-1. Open the **Microsoft Store**.
-2. Search for **Ubuntu 22.04 LTS** (or newer like 24.04 LTS).
-3. Click **Get / Install**.
-4. Launch Ubuntu from the **Start menu**.
-
----
-
-### 3. First-time Ubuntu Setup
-- Wait for the "Installing..." message to finish.
-- Enter:
-  - **Username** (e.g., `matt`) — Linux account name (not your Windows login)
-  - **Password** — any password you like; used for software installs inside Ubuntu.
-
----
-
-### 4. Confirm Ubuntu & WSL Version
-Back in **PowerShell** (normal window):
-```powershell
-wsl -l -v
-```
-You should see:
-```
-  NAME            STATE           VERSION
-* Ubuntu-22.04    Running         2
-```
-If `VERSION` is 1:
-```powershell
-wsl --set-version Ubuntu-22.04 2
-```
-
----
-
-### 5. Access Windows Drives in Ubuntu
-Inside Ubuntu:
-```bash
-cd /mnt/f/UIC_DDP_Data
-ls
-```
-- `/mnt/c/` = C:\
-- `/mnt/f/` = F:\
-
----
-
-## Install FSL via micromamba (conda-forge)
-
-> This avoids the old `fslinstaller.py` issues and gives you the latest maintained conda build of FSL.
-
-### 1. Install dependencies
-```bash
-sudo apt update
-sudo apt install -y bzip2 xz-utils tar curl ca-certificates
-```
-
----
-
-### 2. Download micromamba
-```bash
-cd ~
-wget -O micromamba.tar.bz2 https://micro.mamba.pm/api/micromamba/linux-64/latest
-```
-
----
-
-### 3. Unpack micromamba
-```bash
-mkdir -p ~/micromamba
-tar -xvjf micromamba.tar.bz2 -C ~/micromamba --strip-components=1 bin/micromamba
-ls -l ~/micromamba/micromamba  # <-- should show a file
-```
-
----
-
-### 4. Create the FSL environment
-```bash
-~/micromamba/micromamba create -y -p ~/fsl-env -c conda-forge fsl=6.0.7.18
-```
-
----
-
-### 5. Test before adding to PATH
-```bash
-~/micromamba/micromamba run -p ~/fsl-env topup -h | head -n 5
-```
-If you see the TOPUP help banner, the install worked.
-
----
-
-### 6. Add FSL to your shell permanently
-```bash
-# Remove any old/bad lines
-sed -i '/FSLDIR/d;/fslconf\/fsl\.sh/d;/FSLDIR\/bin/d' ~/.bashrc
-
-# Add correct env vars
-cat <<'EOF' >> ~/.bashrc
-export FSLDIR=$HOME/fsl-env
-. ${FSLDIR}/etc/fslconf/fsl.sh
-export PATH=$FSLDIR/bin:$PATH
-EOF
-
-# Reload config
-source ~/.bashrc
-```
-
----
-
-### 7. Verify final install
-```bash
-echo $FSLDIR       # should be /home/<user>/fsl-env
-which topup        # should be /home/<user>/fsl-env/bin/topup
-topup -h | head -n 5
-```
-
----
-
-## Running TOPUP on Your Data (Example)
+Run these commands inside WSL, from this repository's directory:
 
 ```bash
-# Move to your data folder
-cd /mnt/f/UIC_DDP_Data/Doors_data_files/sub-001/ses-amph/fmap
-
-# Merge blip-up and blip-down
-fslmerge -t blip_pairs.nii.gz sub-001_ses-amph_dir-ap_task-doors1_epi.nii.gz sub-001_ses-amph_dir-pa_task-doors1_epi.nii.gz
-
-# Create acquisition parameters file (acqparams.txt)
-cat <<EOF > acqparams.txt
-0 1 0 0.045
-0 -1 0 0.045
-EOF
-
-# Run TOPUP
-topup --imain=blip_pairs.nii.gz --datain=acqparams.txt --config=b02b0.cnf       --out=topup_results --iout=blip_pairs_corrected
-
-# Apply TOPUP to BOLD
-applytopup --imain=sub-001_ses-amph_task-doors1_bold.nii.gz            --inindex=1 --datain=acqparams.txt --topup=topup_results            --method=jac --out=doors1_bold_topup.nii.gz
+command -v topup applytopup fslmaths fslmerge fslval python3
+bash -n Distortion_correction_with_blip_up_blip_down.bash
+python3 -m unittest discover -s tests
+bash Distortion_correction_with_blip_up_blip_down.bash --help
 ```
 
----
+The repository forces LF line endings for shell files, including Windows
+checkouts. Keep `topup_metadata.py` alongside the Bash script.
 
-## Troubleshooting WSL/FSL Install Issues
+## Input layout and acquisition metadata
 
-### **1. `$FSLDIR` points to the wrong location**
-**Symptom:**
+For each requested task, the workflow looks for:
+
+```
+sub-01/[ses-01/]func/sub-01[_ses-01]_task-rest_bold.nii.gz
+sub-01/[ses-01/]fmap/sub-01[_ses-01]_task-rest_dir-ap_epi.nii.gz
+sub-01/[ses-01/]fmap/sub-01[_ses-01]_task-rest_dir-pa_epi.nii.gz
+```
+
+Uncompressed `.nii` inputs and the legacy `dir-ap_task-rest` entity order are
+also accepted. A keyword fallback is allowed only when exactly one file
+matches each direction. Ambiguous files must be renamed or selected by a
+more specific keyword. Multiple `run-`, `echo-`, or `acq-` variants are not
+resolved automatically. Task names passed via `--runs` refer to task entities.
+
+Each NIfTI must have a JSON sidecar containing `PhaseEncodingDirection` and
+`TotalReadoutTime` in seconds. Only opposite **j/j-** field-map acquisitions
+are supported. Directions come from metadata, not AP/PA filename assumptions.
+The BOLD direction/readout must match one field map. Missing, ambiguous or
+unsupported metadata fails; the script never guesses the readout time.
+Images must already have compatible spatial geometry and acquisition setup.
+
+## Run
+
 ```bash
-echo $FSLDIR
-# Shows /usr/share/fsl/... or /home/user/fslsed
-which topup
-# "no topup in PATH" or points to wrong folder
+bash Distortion_correction_with_blip_up_blip_down.bash --root /mnt/d/my_BIDS --runs 'rest doors1' --workers 2 --topup-nthr 1 --dry-run
+bash Distortion_correction_with_blip_up_blip_down.bash --root /mnt/d/my_BIDS --runs 'rest doors1' --workers 2 --topup-nthr 1
 ```
-**Fix:**
+
+A dry run checks file selection and metadata and writes logs/status only.
+Each actual task gets a unique work directory, preventing concurrent tasks
+or old intermediates from mixing. Corrected images and text summaries are
+copied next to the source BOLD files with `_blipUp_blipDown`/`_blipAnB` suffixes.
+Rerunning a task replaces those derived outputs; the source BOLD is retained.
+Worker errors cause a nonzero batch exit status. Missing requested BOLD files
+are recorded as SKIP, so also inspect the status TSV for intended coverage.
+
+## Actual FSL smoke test
+
 ```bash
-sed -i '/FSLDIR/d;/fslconf\/fsl\.sh/d;/FSLDIR\/bin/d' ~/.bashrc
-cat <<'EOF' >> ~/.bashrc
-export FSLDIR=$HOME/fsl-env
-. ${FSLDIR}/etc/fslconf/fsl.sh
-export PATH=$FSLDIR/bin:$PATH
-EOF
-source ~/.bashrc
+"$FSLDIR/bin/python" tests/smoke_actual_fsl.py
 ```
 
----
+This generates two small synthetic BIDS tasks in a temporary directory,
+runs actual TOPUP/applytopup concurrently, checks near-zero distortion for
+identical opposing-encoding images, and verifies failure propagation and CLI
+validation. The test requires NumPy and NiBabel (available in the FSL Python
+environment). It does not validate distortion correction on real participant
+data; review field maps, acquisition metadata and before/after images.
 
-### **2. `tar` fails with: "bzip2: command not found"**
-**Fix:**
-```bash
-sudo apt update
-sudo apt install -y bzip2 xz-utils tar
-```
+## Downloadable synthetic example
 
----
-
-### **3. Old `fslinstaller.py` doesn’t work**
-**Fix:** Use micromamba instead:
-```bash
-~/micromamba/micromamba create -y -p ~/fsl-env -c conda-forge fsl=6.0.7.18
-```
-
----
-
-### **4. `which topup` works, but `topup` errors about missing config**
-**Fix:**
-```bash
-. ${FSLDIR}/etc/fslconf/fsl.sh
-```
-
----
-
-### **5. Forgot your Ubuntu (WSL) password**
-**Fix:**
-```powershell
-wsl -u root
-```
-Then inside Ubuntu:
-```bash
-passwd yourusername
-```
-
----
-
-### **6. Checking that `topup` is actually available**
-```bash
-echo $FSLDIR
-which topup
-topup -h | head -n 5
-```
-
----
-
- **Pro tip:** If something still doesn’t work, check the installer log:
-```bash
-tail -n 60 ~/fsl_installation_*.log 2>/dev/null
-```
+[Run the bundled synthetic example](examples/synthetic/README.md) to check your setup against
+included reference outputs. It contains actual input files, a one-command runner,
+expected tables/plots, and numerical comparisons that report PASS or a mismatch.
+The example guide links to the main-branch ZIP, including the readiness fixes.
